@@ -179,7 +179,9 @@ def visualize_path(path: List[Edge]) -> None:
 
 
             # draw line between taxi position and customer position, in dashed line
-            plt.plot([taxi_positions[j][0], people_positions[i][0]], [taxi_positions[j][1], people_positions[i][1]], colors[j % len(colors)], linestyle='dashed')
+            plt.plot(
+                [taxi_positions[j][0], people_positions[i][0]], [taxi_positions[j][1], people_positions[i][1]],
+                     colors[j % len(colors)], linestyle='dashed')
 
             # update taxi position
             taxi_positions[j] = (edge.state.taxi_states[j].x, edge.state.taxi_states[j].y)
@@ -197,12 +199,6 @@ def visualize_path(path: List[Edge]) -> None:
             )
 
     plt.show()
-
-
-
-
-
-
 
 if __name__ == '__main__':
 
