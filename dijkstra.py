@@ -1,4 +1,4 @@
-from states import State, Edge
+from states import State, Edge, visualize_path
 import heapq
 import time
 
@@ -60,3 +60,5 @@ if __name__ == '__main__':
     print()
     print('\n'.join(str(edge) for edge in path))
     print(f'Total cost: {total_cost}')
+
+    visualize_path(path)
