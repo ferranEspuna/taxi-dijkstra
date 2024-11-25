@@ -1,4 +1,5 @@
-from states import State, Edge, visualize_path
+from states import State, Edge
+from visualization import visualize_path
 import heapq
 import time
 
@@ -52,13 +53,10 @@ if __name__ == '__main__':
 
     t0 = time.time()
     State.initialize('example.json', speed=1.0)
-
     final_state, visited_dict, total_cost = dijkstra(State.start(), heuristic=True)
-
     path = reconstruct_edges(final_state, visited_dict)
     print(f'Computation time: {time.time() - t0}')
     print()
     print('\n'.join(str(edge) for edge in path))
     print(f'Total cost: {total_cost}')
-
     visualize_path(path)
