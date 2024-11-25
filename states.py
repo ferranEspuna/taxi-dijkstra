@@ -94,7 +94,7 @@ class State:
                     dist((old_taxi_state.x, old_taxi_state.y),
                          (self._people[customer_idx]['coordX'], self._people[customer_idx]['coordY'])
                          )
-                    + self._people[customer_idx]['time']
+                    + self._people[customer_idx]['dist']
                 ) / self._speed
             )
             new_taxi_states[taxi_idx] = new_taxi_state
