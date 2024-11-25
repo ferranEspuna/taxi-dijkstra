@@ -1,27 +1,31 @@
 import json
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Tuple, List, ClassVar, Optional
+from itertools import combinations
 
-speed = 1.0
 
 def dist(a, b):
     return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
-
-with open('example.json') as json_file:
-    info = json.load(json_file)
-
-taxis = info['vehicles']
-people = info['customers']
-for person in people:
-    person['dist'] = dist((person['coordX'], person['coordY']), (person['destinationX'], person['destinationY']))
-    person['time'] = person['dist'] / speed
 
 @dataclass(frozen=True)
 class TaxiState:
     x: int
     y: int
-    customers: Tuple[int, ...] = tuple()
+    customers: Tuple[int | str, ...] = tuple()
     firstFree: float = 0.0
+    dead: bool = False
+
+@dataclass(frozen=True)
+class Edge:
+    state: 'State'
+    edge: Optional[List[Tuple[int, int]]]  = None
+    cost: float = 0.0
+
+    def __repr__(self):
+        return '\n'.join(
+            f'Customer {i} goes with taxi {j}, waiting time: {self.state.taxi_states[j].firstFree}'
+            for i, j in self.edge
+        )
 
 
 @dataclass(frozen=True)
@@ -29,74 +33,142 @@ class State:
 
     done: Tuple[bool, ...]
     taxi_states: Tuple[TaxiState, ...]
+    _people: ClassVar[List[dict] | None] = None
+    _taxis: ClassVar[List[dict] | None] = None
+    _speed: ClassVar[float] = 1.0
 
     @classmethod
-    def start(cls):
+    def initialize(cls, filename: str, speed: float = 1.0) -> None:
+
+        with open(filename) as json_file:
+            info = json.load(json_file)
+
+        cls._people = info['customers']
+        cls._taxis = info['vehicles']
+        cls._speed = speed
+
+        for person in cls._people:
+            person['dist'] = dist((person['coordX'], person['coordY']),
+                                  (person['destinationX'], person['destinationY']))
+            person['time'] = person['dist'] / speed
+
+
+    @classmethod
+    def start(cls) -> 'State':
+
+        assert cls._people is not None and cls._taxis is not None,\
+            'Initialize the data first. For example, State.initialize("smol.json")'
+
         return cls(
-            done=tuple(False for _ in people),
-            taxi_states=tuple(TaxiState(x=taxi['coordX'], y=taxi['coordY']) for taxi in taxis)
+            done=tuple(False for _ in cls._people),
+            taxi_states=tuple(TaxiState(x=taxi['coordX'], y=taxi['coordY']) for taxi in cls._taxis)
 
         )
 
-    def max_waiting_time(self):
+    def max_waiting_time(self) -> float:
         return max(taxi.firstFree for taxi in self.taxi_states)
 
-    def next(self, customer_idx, taxi_idx):
+    def next(self, assignments) -> 'State':
+
+        customer_indices = [i for i, _ in assignments]
+        taxi_indices = [j for _, j in assignments]
+
+        assert len(set(customer_indices)) == len(customer_indices)
+        assert len(set(taxi_indices)) == len(taxi_indices)
 
         new_done = list(self.done)
-        assert not new_done[customer_idx]
-        new_done[customer_idx] = True
-        new_done = tuple(new_done)
-
         new_taxi_states = list(self.taxi_states)
-        old_taxi_state = new_taxi_states[taxi_idx]
-        new_taxi_state = TaxiState(
-            x=people[customer_idx]['destinationX'],
-            y=people[customer_idx]['destinationY'],
-            customers=tuple(list(old_taxi_state.customers) + [customer_idx]),
-            firstFree=old_taxi_state.firstFree + (
-                dist((old_taxi_state.x, old_taxi_state.y),
-                     (people[customer_idx]['coordX'], people[customer_idx]['coordY'])
-                     )
-                + people[customer_idx]['time']
-            ) / speed
-        )
-        new_taxi_states[taxi_idx] = new_taxi_state
+
+        for customer_idx, taxi_idx in assignments:
+
+            assert not self.taxi_states[taxi_idx].dead
+            assert not self.done[customer_idx]
+
+            new_done[customer_idx] = True
+
+            old_taxi_state = new_taxi_states[taxi_idx]
+            new_taxi_state = TaxiState(
+                x=self._people[customer_idx]['destinationX'],
+                y=self._people[customer_idx]['destinationY'],
+                customers=tuple(list(old_taxi_state.customers) + [customer_idx]),
+                firstFree=old_taxi_state.firstFree + (
+                    dist((old_taxi_state.x, old_taxi_state.y),
+                         (self._people[customer_idx]['coordX'], self._people[customer_idx]['coordY'])
+                         )
+                    + self._people[customer_idx]['time']
+                ) / self._speed
+            )
+            new_taxi_states[taxi_idx] = new_taxi_state
+
+        for taxi_idx in range(len(self._taxis)):
+            if not taxi_idx in taxi_indices and not new_taxi_states[taxi_idx].dead:
+                new_taxi_states[taxi_idx] = TaxiState(
+                    x=self.taxi_states[taxi_idx].x,
+                    y=self.taxi_states[taxi_idx].y,
+                    customers=self.taxi_states[taxi_idx].customers,
+                    firstFree=self.taxi_states[taxi_idx].firstFree,
+                    dead=True
+                )
+
+
+        new_done = tuple(new_done)
         new_taxi_states = tuple(new_taxi_states)
 
         return State(done=new_done, taxi_states=new_taxi_states)
 
-    def edges(self):
-        for i, customer in enumerate(people):
-            if self.done[i]:
-                continue
-            for j, taxi in enumerate(taxis):
-                n = self.next(i, j)
-                yield {
-                    'edge': (i, j),
-                    'state': n,
-                    # right now, the cost is the time to reach destination --> total cost is the total time
-                    'cost': n.taxi_states[j].firstFree
-                }
+    def edges(self) -> List[Edge]:
 
-    def is_goal(self):
+        # iterate for all sets of taxis and sets of customers
+        avail_taxis = [i for i, taxi in enumerate(self.taxi_states) if not taxi.dead]
+        avail_customers = [i for i, done in enumerate(self.done) if not done]
+
+        # for all subsets of taxis
+        for l in range(1, len(avail_taxis) + 1):
+            for tax_idxs in combinations(avail_taxis, l):
+                for pep_idxs in combinations(avail_customers, l):
+                    assignments = [(pep_idx, tax_idx) for pep_idx, tax_idx in zip(pep_idxs, tax_idxs)]
+                    next_state = self.next(assignments)
+
+                    yield Edge(
+                        edge=assignments,
+                        state=next_state,
+                        cost=sum(next_state.taxi_states[j].firstFree for j in tax_idxs)
+                    )
+
+    def is_goal(self) -> bool:
         return all(self.done)
 
-    def remaining_customers(self):
+    def remaining_customers(self) -> int:
         return sum(not done for done in self.done)
+
+    def heuristic(self) -> float:
+        return sum(
+            customer['time'] + min(
+                dist((taxi.x, taxi.y), (customer['coordX'], customer['coordY'])
+                     ) / self._speed + taxi.firstFree
+                for taxi in self.taxi_states
+                if not taxi.dead
+            )
+            for customer_idx, customer in enumerate(self._people)
+            if not self.done[customer_idx]
+        ) / sum(1 for taxi in self.taxi_states if not taxi.dead)
 
 
 
 if __name__ == '__main__':
 
+    State.initialize('smol.json', speed=1.0)
+
     s = State.start()
-    n = s.next(0, 0).next(1, 1)
-    nn = s.next(1, 1).next(0,0)
+    n = s.next([(0, 1)])
 
-    print(s)
+    try:
+        n = n.next([(1, 0)])
+        assert False
+    except AssertionError:
+        pass
+
     print(n)
-
-    assert nn == n
     print('all good')
 
 

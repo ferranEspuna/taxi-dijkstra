@@ -1,44 +1,46 @@
-from states import State
+from states import State, Edge
 import heapq
 import time
 
 def dijkstra(start, heuristic=False):
     count = 0
     queue = []
-    heapq.heappush(queue, (0, 0, count, start, start, None))
+    heapq.heappush(queue, (0, 0, count, Edge(start), start))
     count += 1
     visited = dict()
     while queue:
-        prev_est_cost, prev_cost, _, state, prev, edge = heapq.heappop(queue)
-        print(state.remaining_customers())
-        if state in visited:
+        prev_est_cost, prev_cost, _, old_edge, prev = heapq.heappop(queue)
+
+        old_state = old_edge.state
+
+        if old_state in visited:
             continue
 
-        visited[state] = (prev, edge)
+        visited[old_state] = (prev, old_edge)
 
-        if state.is_goal():
-            return state, visited
+        if old_state.is_goal():
+            return old_state, visited, prev_cost
 
-        edges = list(state.edges())
-
-        for edge in edges:
-            cost = prev_cost + edge['cost']
+        for new_edge in old_state.edges():
+            cost = prev_cost + new_edge.cost
             est_cost = cost
 
             if heuristic:
-                # assert state.heuristic() <= edge['state'].heuristic() + edge['cost']
-                est_cost += edge['state'].heuristic()
 
-            heapq.heappush(queue, (est_cost, cost, count, edge['state'], state, edge['edge']))
+                # make sure the heuristic is consistent
+                assert old_state.heuristic() <= new_edge.state.heuristic() + new_edge.cost
+                est_cost += new_edge.state.heuristic()
+
+            heapq.heappush(queue, (est_cost, cost, count, new_edge, old_state))
             count += 1
 
-def reconstruct_edges(state, visited):
+def reconstruct_edges(state, visited) -> list:
 
     edges = []
     state, edge = visited[state]
 
 
-    while edge is not None:
+    while edge.edge is not None:
 
         edges.append(edge)
         state, edge = visited[state]
@@ -49,7 +51,12 @@ def reconstruct_edges(state, visited):
 if __name__ == '__main__':
 
     t0 = time.time()
-    x = reconstruct_edges(* dijkstra(State.start(), heuristic=False))
-    print(time.time() - t0)
+    State.initialize('example.json', speed=1.0)
 
-    print(x)
+    final_state, visited_dict, total_cost = dijkstra(State.start(), heuristic=True)
+
+    path = reconstruct_edges(final_state, visited_dict)
+    print(f'Computation time: {time.time() - t0}')
+    print()
+    print('\n'.join(str(edge) for edge in path))
+    print(f'Total cost: {total_cost}')
