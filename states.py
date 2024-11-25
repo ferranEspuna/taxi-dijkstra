@@ -196,10 +196,6 @@ def visualize_path(path: List[Edge]) -> None:
                 head_width=0.001, length_includes_head=True, width=0.0001
             )
 
-            """# draw line between taxi position and customer destination, in solid line
-            plt.plot([people_positions[i][0], taxi_positions[j][0]], [people_positions[i][1], taxi_positions[j][1]], colors[j % len(colors)], linestyle='solid')"""
-
-
     plt.show()
 
 
