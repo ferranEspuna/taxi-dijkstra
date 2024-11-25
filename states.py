@@ -151,7 +151,7 @@ class State:
             )
             for customer_idx, customer in enumerate(self._people)
             if not self.done[customer_idx]
-        ) / sum(1 for taxi in self.taxi_states if not taxi.dead)
+        )
 
 
 
